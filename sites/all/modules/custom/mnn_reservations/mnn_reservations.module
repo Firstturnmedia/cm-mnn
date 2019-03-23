@@ -6,6 +6,566 @@
 /**
  * Implements hook_form_alter().
  */
+ 
+  function mnn_reservations_get_views_header() {
+    $view = views_get_current_view();
+    $view2 = views_get_page_view();
+
+    $full_query = 
+      str_replace('{','',str_replace('}', '', $view->build_info['query']));
+
+
+    $count_query = $view->build_info['count_query'];
+    $select_less_query =substr($count_query, strpos($count_query, "FROM")); 
+    $query_args = $view->build_info['query_args'];
+
+    dsm($full_query,"full");
+    dsm($count_query,"count");
+    dsm($select_less_query,"selectless");
+    $query_args = $count_query->alterMetaData['view']; 
+    $query_args = $query_args->query->where[1]['conditions'];
+    $newargs = array();
+    foreach($query_args as $key=>$query_arg) {
+      $key = ":db_condition_placeholder_".$key;
+      dsm($query_arg['value']);
+      dsm($key);
+      $newargs[$key] = $query_arg['value'];
+      $select_less_query = str_replace($key, "'".$query_arg['value']."'", $select_less_query);
+      
+    }
+    
+    dsm($newargs,"queryargs");
+//    dsm($view2);  
+    $view3 = views_get_view($view->name);
+  $view3->set_display("page_4");
+//$view3->query->limit = 0;
+$view3->set_items_per_page(0);
+$view3->use_pager(FALSE);
+// $view3->pre_execute();
+$view3->execute();
+$allresults = $view3->result;
+//    dsm($view3);
+dsm(count($allresults));
+//    dsm($allresults);
+    //dsm($view->current_display);
+    //dsm($view->base_field);
+    //dsm($view->build_info);
+    if ($view->base_field == 'item_reservation_id') {
+      $results = db_query("SELECT COUNT(distinct ac_report_item_reservation_cache.producer_id) as producers, " .
+                         "       COUNT(distinct ac_report_item_reservation_cache.project_id) as projects, " .
+                         "       COUNT(distinct ac_report_item_reservation_cache.affiliate_org_id) as affiliates,".
+                         "       SUM(reserve_length) as hours " .
+                         $select_less_query, $query_args);
+      $result = db_fetch_object($results);
+      
+      $count = $view->total_rows;
+      $unique_producers = $result->producers;
+      $unique_projects = $result->projects;
+      $affiliates = $result->affiliates ? $result->affiliates : 0;
+      $hours = $result->hours;
+      if (!$hours) {
+        $hours = 0;
+        $average = 0;
+      }
+      else {
+        $hours = $hours/(60*60);
+        $average = $hours/$count;
+      }
+      
+      return "<br/>" .
+              "<table>" .
+              "<th>Total Results</th><th>Unique Producers</th>" .
+              "<th>Unique Projects</th><th>Total Hours</th>" .
+              "<th>Hours Per Use</th><th>Total Affiliates</th>" .
+              "<tr><td>$count</td><td>$unique_producers</td><td>$unique_projects</td><td>$hours</td>" .
+              "<td>$average</td><td>$affiliates</td></tr></table><br/>";            
+      }
+      else if ($view->base_field == 'episode_id'){
+        
+        $results = db_query("SELECT COUNT(distinct ac_report_episode_cache.exec_producer_id ) as producers, " .
+                         "       COUNT(distinct ac_report_episode_cache.project_id) as projects, " .
+                         "       SUM(duration) as seconds, SUM(duration*number_of_airings) as airtime " .
+                           $select_less_query, $query_args);
+       $result = db_fetch_object($results);
+        
+        $count = $view->total_rows;
+        $unique_producers = $result->producers;
+        $unique_projects = $result->projects;
+        $seconds = $result->seconds;
+        $airtime = $result->airtime;
+        
+        if (!$seconds) {
+          $hours = 0;
+          $average = 0;
+        }
+        else {
+          $hours = $seconds/(60*60);
+          $average = ($seconds/60)/$count;
+        }
+        if (!$airtime) {
+          $airtime = 0;
+        }
+        else {
+          $airtime = $airtime/(60*60);
+        }
+        
+        return "<br/>" .
+                "<table>" .
+                "<th>Total Results</th><th>Unique Producers</th><th>Unique Projects</th>" .
+                "<th>Total Hours</th><th>Total Air Hours</th><th>Minutes Per Episode</th>" .
+                "<tr><td>$count</td><td>$unique_producers</td><td>$unique_projects</td><td>$hours</td>" .
+                "<td>$airtime</td><td>$average</td></tr></table><br/>";     
+      }
+    ////////////////////////////////////////////////////////////////////////
+    //PRODUCER CLASS REPORT
+    else if ($view->base_field == 'class_producer_id'){
+      $results = db_query(
+        "SELECT COUNT(distinct ac_report_producer_class_cache.producer_id) as producers, " .
+        "COUNT(distinct ac_report_producer_class_cache.contact_id) as contacts, " .
+	"COUNT(distinct ac_report_producer_class_cache.class_id ) as classes," .
+	"COUNT(distinct ac_report_class_cache_ac_report_producer_class_cache.course_title) ".
+	"  as courses, " .
+	"COUNT(distinct ac_report_producer_class_cache.affiliate_org_id) as affiliates,".
+	"SUM(session_hours) as seconds ".
+	$select_less_query, $query_args);
+      
+      $result = db_fetch_object($results);
+        
+      $count = $view->total_rows;
+      $unique_producers = $result->producers;
+      $unique_contacts = $result->contacts;
+      $classes = $result->classes;
+      $courses = $result->courses;
+      $seconds = $result->seconds;
+      $affiliates = $result->affiliates ? $result->affiliates : 0;
+      
+      if (!$seconds) {
+	$hours = 0;
+	$average = 0;
+      }
+      else {
+	$hours = $seconds;
+	$average = ($hours)/$count;
+      }
+
+      return "<br/>" .
+	"<table>" .
+	"<th>Total Results</th><th>Unique Producers</th><th>Unique People</th>" .
+	"<th>Total Courses</th><th>Total Classes</th><th>Total Hours</th>".
+	"<th>Hours Per Class</th><th>Total Affiliate Orgs</th><tr><td>$count</td>".
+	"<td>$unique_producers</td><td>$unique_contacts</td><td>$courses</td>".
+	"<td>$classes</td><td>$hours</td><td>$average</td><td>$affiliates</td>".
+	"</tr></table><br/>";     
+    }
+    /////////////////////////////////////////////////////////////////
+    //PRODUCER HEADER
+    /////////////////////////////////////////////////////////////////
+    else if ($view->base_field == 'producer_id') {
+      $classes_field = (strpos($count_query, "class_count") > 0) ? 
+        "producer_classes.class_count" : "ac_report_producer_cache.number_of_classes";
+        
+      $projects_field = (strpos($count_query, "project_count") > 0) ? 
+        "producer_projects.project_count" : "ac_report_producer_cache.number_of_projects";
+        
+      $episodes_field = (strpos($count_query, "episode_count") > 0) ? 
+        "producer_episodes.episode_count" : "ac_report_producer_cache.number_of_episodes";
+        
+      $reservations_field = (strpos($count_query, "reservation_count") > 0) ? 
+        "producer_reservations.reservation_count" : "ac_report_producer_cache.number_of_reservations";
+        
+      $affiliates_field = (strpos($count_query, "affiliate_count") > 0) ? 
+        "producer_affiliates.affiliate_count" : "ac_report_producer_cache.number_of_affiliates";
+            
+      $results = db_query(
+          "SELECT  SUM($classes_field) as classes, ".
+          "        SUM($projects_field) as projects, ".
+          "        SUM($episodes_field) as episodes, ".
+          "        SUM($reservations_field) as reservations, ".
+          "        SUM($affiliates_field) as affiliates ".
+          $select_less_query, $query_args);
+           
+      $result = db_fetch_object($results);
+      $count = $view->total_rows ? $view->total_rows: 0;
+      $classes = $result->classes ? $result->classes: 0;
+      $episodes = $result->episodes ? $result->episodes: 0;
+      $projects = $result->projects ? $result->projects: 0;
+      $reservations = $result->reservations ? $result->reservations: 0;
+      $affiliates = $result->affiliates ? $result->affiliates: 0;
+      $activities = $classes + $episodes + $projects + $reservations;  
+        
+      return "<br/>" .
+              "<table>" .
+              "<th>Total Producers</th><th>Total Class Enrollments</th>" .
+              "<th>Total Executive Produced Episodes</th><th>Total Project Memberships</th>" .
+              "<th>Total Reservations</th><th>Total Activities (Class+Ep+Proj+Res)</th>" .
+              "<th>Total Affiliate Org Relationships</th>" .
+              "<tr><td>$count</td><td>$classes</td>" .
+              "<td>$episodes</td><td>$projects</td>" .
+              "<td>$reservations</td><td>$activities</td>" .
+              "<td>$affiliates</td></tr></table><br/>";     
+    } 
+    else if ($view->base_field == 'project_id') {
+      $producers_field = "ac_report_project_cache.exec_producer_id";
+        
+//      $episodes_field = (strpos($count_query, "episode_count") > 0) ? 
+//        "project_episodes.episode_count" : "ac_report_project_cache.number_of_episodes";
+
+      $episodes_field = "ac_report_project_cache.number_of_episodes";
+        
+//       $reservations_field = (strpos($count_query, "reservation_count") > 0) ? 
+//         "project_reservations.reservation_count" : "ac_report_project_cache.number_of_reservations";
+      $reservations_field = "ac_report_project_cache.number_of_reservations";
+        
+//      $affiliates_field = (strpos($count_query, "affiliate_count") > 0) ? 
+//        "project_affiliates.affiliate_count" : "ac_report_project_cache.number_of_affiliates";
+        
+      $affiliates_field = "ac_report_project_cache.number_of_affiliates";      
+ 
+      $total_producers_field = "ac_report_project_cache.number_of_producers";
+ //     $total_producers_field = (strpos($count_query, "total_producer_count") > 0) ? 
+//        "project_producers.total_producer_count" : "ac_report_project_cache.number_of_producers";//
+//        dsm($select_less_query);\
+//       $select_less_query = str_replace(") ))",") ))".implode(",", $newargs),$select_less_query);
+//       $select_less_query = str_replace(") ))","), array(':db_condition_placeholder_0' => '59th St Express Studios')),",$select_less_query);
+ //      $select_less_query = str_replace(":db_condition_placeholder_0","'59th St Express Studios'",$select_less_query);
+//        dsm($query_args);
+      $results = db_query(
+        "SELECT  COUNT(distinct $producers_field) as producers, ".
+        "        SUM($total_producers_field) as total_producers, ".
+        "        SUM($episodes_field) as episodes, " .
+        "        SUM($reservations_field) as reservations, " .
+//        "        SUM($affiliates_field) as affiliates ". $select_less_query);
+        "        SUM($affiliates_field) as affiliates, ac_report_item_reservation_cache.item_reservation_id AS ac_report_item_reservation_cache_item_reservation_id ". $select_less_query);
+//                        $select_less_query, $newargs);
+       dsm($results);          
+//      $result = db_fetch_object($results);
+//       $result = $results->execute();
+      
+                         
+      $count = $view->total_rows ? $view->total_rows: 0;
+      $producers = $result->producers ? $result->producers: 0;
+      $total_producers = $result->total_producers ? $result->total_producers: 0;
+      $episodes = $result->episodes ? $result->episodes: 0;
+      $reservations = $result->reservations ? $result->reservations: 0;
+      $affiliates = $result->affiliates ? $result->affiliates: 0;
+      $activities = $episodes + $reservations;  
+             $header = array();
+      $rows = array();
+
+ $header[] = "Total Results";
+  $header[] ="Unique Producers";
+ $header[] =  "Unique Projects";
+ $header[] =  " Total Hours";
+  $header[] = "Hours Per Use";
+  $header[] =  " Total Affiliates";
+    $rows[0][] = $count; 
+      $rows[0][] = $unique_producers;
+        $rows[0][] =$unique_projects;
+          $rows[0][] =$hours;
+            $rows[0][] =$average;
+              $rows[0][] =$affiliates;  
+    $output = theme('table', array('header' => $header, 'rows' => $rows));
+dsm($output);
+  return $output; 
+  
+//       return "<br/>" .
+//             "<table>" .
+//             "<th>Total Projects</th>" .
+//             "<th>Total Unique Executive Producers</th>" .
+//             "<th>Total Project Members</th>".
+//             "<th>Total Episodes</th>" .
+//             "<th>Total Reservations</th>" .
+//             "<th>Total Activities (Ep+Res)</th>" .
+//             "<th>Total Affiliate Orgs</th>" .
+//             "<tr><td>$count</td>" .
+//             "<td>$producers</td>" .
+//             "<td>$total_producers</td>" .
+//             "<td>$episodes</td>" .
+//             "<td>$reservations</td>" .
+//             "<td>$activities</td>" .
+//             "<td>$affiliates</td></tr></table><br/>";     
+     } 
+    else if ($view->base_field == 'item_id') {
+      $bucket_category_count = count($_GET['bucket_category']);
+    //dsm($view);
+    //dsm($view->current_display);
+    //dsm($view->base_field);
+    //dsm($view->build_info);
+
+      $header = array(t('Name'), t('Items'), t('Buckets'), t('Reservations')); 
+      $rows = array();
+      if ( $bucket_category_count > 1 ) {
+        foreach ( $_GET['bucket_category'] as $k => $category ) {
+          $subquery_args = array();
+          for ( $i = 0; $i < $bucket_category_count ; $i++ ) {
+            $subquery_args[$i] = $category;
+          }
+          $sub_results = db_query(
+               "SELECT  COUNT(*) as total_subitems, COUNT(distinct ac_report_item_cache.bucket_id) as buckets," .
+               "        SUM(reservation_count) as reservations  ".
+                                $select_less_query, $subquery_args);
+          $values = db_fetch_object($sub_results);
+          $rows[] = array($category, $values->total_subitems, $values->buckets, $values->reservations ? $values->reservations : 0);
+        }
+      }
+    
+      $results = db_query(
+           "SELECT  COUNT(distinct ac_report_item_cache.bucket_id) as buckets," .
+           "        SUM(reservation_count) as reservations  ".
+                            $select_less_query, $query_args);
+      $result = db_fetch_object($results);
+       
+      $count = $view->total_rows;
+      $buckets = $result->buckets;
+      if (!$buckets) {
+        $buckets = 0;
+      }
+      
+      $reservations = $result->reservations ? $result->reservations: 0;  
+      if ( count($rows) ) {
+        $rows[] = array('<strong>'.t('Totals').'</strong>', $count, $buckets, $reservations);
+        return theme('table', $header, $rows);
+      }
+      else {
+        return "<br/>" .
+             "<table>" .
+             "<th>Total Items</th><th>Total Buckets</th><th>Total Reservations</th>" .
+             "<tr><td>$count</td>" .
+             "<td>$buckets</td><td>$reservations</td></tr></table><br/>";    
+      }
+    }
+    else if ($view->base_field == 'affiliate_org_id') {
+      $producers_field = (strpos($count_query, "producer_count") > 0) ? 
+        "affiliate_org_producers.producer_count" : "ac_report_affiliate_org_cache.number_of_producers";
+      
+      $projects_field = (strpos($count_query, "project_count") > 0) ? 
+        "affiliate_org_projects.project_count" : "ac_report_affiliate_org_cache.number_of_projects";
+
+      $classes_field = (strpos($count_query, "class_count") > 0) ? 
+        "affiliate_org_classes.class_count" : "ac_report_affiliate_org_cache.number_of_classes";
+        
+      $episodes_field = (strpos($count_query, "episode_count") > 0) ? 
+        "affiliate_org_episodes.episode_count" : "ac_report_affiliate_org_cache.number_of_episodes";
+        
+      $reservations_field = (strpos($count_query, "reservation_count") > 0) ? 
+        "affiliate_org_reservations.reservation_count" : "ac_report_affiliate_org_cache.number_of_reservations";
+        
+      $header_sql = 
+        "SELECT  SUM($producers_field) as producers, ".
+        "        SUM($projects_field) as projects, " .
+        "        SUM($classes_field) as classes, " .
+        "        SUM($episodes_field) as episodes, " .
+        "        SUM($reservations_field) as reservations " .
+        $select_less_query;
+      
+      $results = db_query($header_sql,  $query_args);
+                        
+      $result = db_fetch_object($results);
+      $count = $view->total_rows ? $view->total_rows: 0;
+      $producers = $result->producers ? $result->producers: 0;
+      $projects = $result->projects ? $result->projects: 0;
+      $classes = $result->classes ? $result->classes: 0;
+      $episodes = $result->episodes ? $result->episodes: 0;
+      $reservations = $result->reservations ? $result->reservations: 0;
+      $activities = $classes + $episodes + $projects + $reservations;  
+      
+                         
+      return "<br/>" .
+            "<table>" .
+            "<th>Total Affiliate Orgs</th>" .
+            "<th>Total Producers</th>" .
+            "<th>Total Projects</th>" .
+            "<th>Total Class Enrollment</th>" .
+            "<th>Total Episodes</th>" .
+            "<th>Total Reservations</th>" .
+            "<th>Total Activities (Proj+Class+Ep+Res)</th>" .
+            "<tr><td>$count</td>" .
+            "<td>$producers</td>" .
+            "<td>$projects</td>" .
+            "<td>$classes</td>" .
+            "<td>$episodes</td>" .
+            "<td>$reservations</td>" .
+            "<td>$activities</td>" .
+            "</tr></table><br/>";     
+    }
+    
+    else if ($view->base_field == 'class_id') {
+      $header_sql = 
+        "SELECT  SUM(number_of_sessions) as sessions, ".
+        "        COUNT(distinct primary_trainer_name) as trainers, " .
+        "        COUNT(distinct certification) as certifications, " .
+        "        SUM(number_attended) as attended, " .
+        "        SUM(session_hours) as session_hours, " .
+        "        COUNT(distinct ac_report_class_cache.affiliate_org_id) as affiliates " .
+        $select_less_query;
+
+      $results = db_query($header_sql,  $query_args);
+                        
+      $result = db_fetch_object($results);
+      $count = $view->total_rows ? $view->total_rows: 0;
+      $sessions = $result->sessions ? $result->sessions: 0;
+      $trainers = $result->trainers ? $result->trainers: 0;
+      $certifications = $result->certifications ? $result->certifications: 0;
+
+      $session_hours = $result->session_hours ? $result->session_hours: 0;
+      $affiliates = $result->affiliates ? $result->affiliates: 0;
+
+      $classes_sql =
+	"SELECT class_id, number_attended, number_producer_students ". $select_less_query;
+      
+      $results = db_query($classes_sql,  $query_args);
+
+      $attended = 0;
+      while ($result = db_fetch_object($results)) {
+	if ($result->number_attended &&
+	    ($result->number_attended >= $result->number_producer_students)) {
+	  $attended += $result->number_attended;
+	}
+	else if ($result->number_producer_students) {
+	  $attended += $result->number_producer_students;
+	}	
+      }
+                         
+      return "<br/>" .
+            "<table>" .
+            "<th>Total Classes</th>" .
+            "<th>Total Number Of Sessions</th>" .
+            "<th>Total Trainers</th>" .
+            "<th>Total Certifications</th>" .
+            "<th>Total Number of Attended</th>" .
+            "<th>Total Session Hours</th>" .
+            "<th>Total Affiliate Orgs (not affiliate locations)</th>" .
+            "<tr><td>$count</td>" .
+            "<td>$sessions</td>" .
+            "<td>$trainers</td>" .
+            "<td>$certifications</td>" .
+            "<td>$attended</td>" .
+            "<td>$session_hours</td>" .
+            "<td>$affiliates</td>" .
+            "</tr></table><br/>";     
+    }
+    
+    else if ($view->base_field == 'trainer_class_id') {
+       $header_sql = 
+        "SELECT  COUNT(distinct ac_report_producer_cache_ac_report_trainer_class_cache.producer_id) as trainers, ".
+        "        COUNT(distinct certification) as certifications, " .
+        "        COUNT(distinct course_title) as courses, " .
+        "        COUNT(distinct ac_report_trainer_class_cache.class_id ) as classes, " .
+        "        SUM(number_producer_students) as passed_failed, " .
+        "        SUM(number_attended) as attended, " .
+        "        COUNT(distinct affiliate_org_id) as affiliates " .
+        $select_less_query;
+
+      $results = db_query($header_sql,  $query_args);
+                        
+      $result = db_fetch_object($results);
+      $count = $view->total_rows ? $view->total_rows: 0;
+      $trainers = $result->trainers ? $result->trainers: 0;
+      $classes = $result->classes ? $result->classes: 0;
+      $courses = $result->courses ? $result->courses: 0;
+      $certifications = $result->certifications ? $result->certifications: 0;
+      $passed_failed = $result->passed_failed ? $result->passed_failed: 0;
+      $attended = $result->attended ? $result->attended: 0;
+      $affiliates = $result->affiliates ? $result->affiliates: 0;
+      
+      $producer_class_status_sql = 
+        "SELECT count(status) as status_count, status as name " .
+        "FROM ac_report_producer_class_cache " .
+        "WHERE class_id IN " .
+        "  (SELECT ac_report_class_cache_ac_report_trainer_class_cache.class_id " .
+        "   $select_less_query)" .
+        "GROUP BY status " .
+        "ORDER BY " .
+        "status='passed'," .
+        "status='failed'," .
+        "status='enrolled'," .
+        "status='confirmed'," .
+        "status='waitlist'," .
+        "status='cancelled'," .
+        "status='unconfirmed'";
+    
+      $enrolled_count = 0;
+      $status_results = db_query($producer_class_status_sql,  $query_args);
+      
+      //ac_report_qlog($producer_class_status_sql, $query_args);
+    
+      while ($status = db_fetch_object($status_results)){
+        $status_counts .= $status->name . ": ". $status->status_count . "<br/>";
+        if ($status->name == 'passed') {
+          $passed_count += $status->status_count;
+        }
+        if ($status->name == 'failed') {
+          $failed_count += $status->status_count;
+        }
+        $enrolled_count += $status->status_count;
+      }
+      $status_counts .= "total: $enrolled_count";
+                         
+      $ret =  "<br/>" .
+            "<table>" .
+            "<th>Total Results</th>" .
+            "<th>Unique Trainers</th>" .
+            "<th>Unique Classes</th>" .
+            "<th>Unique Courses</th>" .
+            "<th>Unique Certifications</th>" .
+            "<th>Total Attended (Used by YC/CM)</th>" .
+            "<th>Total Passed/Failed</th>" .
+            "<th>Enrollment Status Counts</th>" .
+            "<th>Unique Affiliate Orgs</th>" .
+            "<tr valign='top'><td>$count</td>" .
+            "<td>$trainers</td>" .
+            "<td>$classes</td>" .
+            "<td>$courses</td>" .
+            "<td>$certifications</td>" .
+            "<td>$attended</td>" .
+            "<td>".($passed_count + $failed_count)."</td>" .
+            "<td nowrap>$status_counts</td>" .
+            "<td>$affiliates</td>" .
+            "</tr></table><br/>";  
+            
+      
+              
+      return $ret;   
+    }
+    ////////////////////////////////////////////////////////////////////////////////
+    //CHANNEL REPORT
+    ///////////////////////////////////////////////////////////////////////////////
+    else if ($view->base_field == 'airing_id') {
+      $group_by_channel_sql =
+	"SELECT channel, ".
+	"COUNT(distinct ac_report_airing_cache.episode_id) as episodes, ".
+	"SUM(ac_report_airing_cache.duration) as runtime, ".
+	"COUNT(ac_report_airing_cache.airing_id) as total_runs " .
+	"FROM ac_report_airing_cache " .
+	"WHERE airing_id IN " .
+	"  (SELECT ac_report_airing_cache.airing_id " .
+	"   $select_less_query)" .
+	"GROUP BY channel " .
+	"ORDER BY channel";
+      
+      $channel_results = db_query($group_by_channel_sql,  $query_args);
+      $ret =  "<br/>" .
+	"<table>" .
+	"<th>Channel</th>" .
+	"<th>Unique Shows</th>" .
+	"<th>Total Airings</th>" .
+	"<th>Total Runtime in Hours</th>";
+      
+      while ($channel = db_fetch_object($channel_results)){
+	$ret .= 
+	  "<tr valign='top'>" .
+	  "<td>" .$channel->channel ."</td>" .
+	  "<td>" .$channel->episodes ."</td>" .
+	  "<td>" .$channel->total_runs ."</td>" .
+	  "<td>" .number_format((float)($channel->runtime/(60*60)), 2, '.', '') ."</td>" .
+	  "</tr>";	 
+       }
+      
+      $ret .= "</table><br/>";
+      
+      return $ret;   
+    }
+  } 
 function mnn_reservations_form_alter(&$form, &$form_state, $form_id) {
   if (isset($form['type']['#value'])
           && $form['type']['#value'] == 'reservations_reservation'

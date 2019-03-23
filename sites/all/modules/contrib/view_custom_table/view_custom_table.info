@@ -1,0 +1,16 @@
+name = Views Custom Table
+description = This module gives ability to add a custom table in views.
+core = 7.x
+package = Views
+dependencies[] = views:views
+configure = admin/structure/views/custom_table
+
+; Views Handlers
+files[] = views/handlers/view_custom_table_handler_field_date_time.inc
+files[] = views/handlers/view_custom_table_handler_filter_date.inc
+
+; Information added by Drupal.org packaging script on 2019-02-23
+version = "7.x-1.0-alpha3+1-dev"
+core = "7.x"
+project = "view_custom_table"
+datestamp = "1550900287"
